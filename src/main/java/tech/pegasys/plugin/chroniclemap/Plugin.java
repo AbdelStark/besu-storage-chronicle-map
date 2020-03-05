@@ -1,38 +1,38 @@
-package tech.pegasys.plugin;
+package tech.pegasys.plugin.chroniclemap;
 
 import com.google.auto.service.AutoService;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import lombok.extern.slf4j.Slf4j;
 import org.hyperledger.besu.plugin.BesuContext;
 import org.hyperledger.besu.plugin.BesuPlugin;
 import org.hyperledger.besu.plugin.services.PicoCLIOptions;
 import org.hyperledger.besu.plugin.services.StorageService;
 import org.hyperledger.besu.plugin.services.storage.KeyValueStorageFactory;
 
+import java.io.IOException;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 @AutoService(BesuPlugin.class)
-public class ChronicleMapPlugin implements BesuPlugin {
-  private static Logger LOG = LogManager.getLogger();
+@Slf4j
+public class Plugin implements BesuPlugin {
   private static String PLUGIN_NAME = "chronicle-map-storage";
 
   private BesuContext context;
-  private final Object options = null;
+  private final Options options = Options.builder().build();
   private KeyValueStorageFactory factory;
 
   @Override
   public void register(final BesuContext context) {
-    LOG.info("Registering plugin {}.", PLUGIN_NAME);
+    log.info("Registering plugin {}.", PLUGIN_NAME);
     this.context = context;
     context
         .getService(PicoCLIOptions.class)
         .ifPresentOrElse(
-            this::handleCLIOptions, () -> LOG.error("Could not obtain PicoCLIOptions service."));
+            this::handleCLIOptions, () -> log.error("Could not obtain PicoCLIOptions service."));
     context
         .getService(StorageService.class)
         .ifPresentOrElse(
-            this::createAndRegister, () -> LOG.error("Could not obtain Storage service."));
+            this::createAndRegister, () -> log.error("Could not obtain Storage service."));
   }
 
   private void handleCLIOptions(final PicoCLIOptions cmdLineOptions) {
@@ -41,25 +41,31 @@ public class ChronicleMapPlugin implements BesuPlugin {
 
   @Override
   public void start() {
-    LOG.info("Starting plugin {}.", PLUGIN_NAME);
-    LOG.info(options.toString());
+    log.info("Starting plugin {}.", PLUGIN_NAME);
   }
 
   private void createAndRegister(final StorageService service) {
-    factory = null;
-    LOG.info("Registering redis key value storage factory");
+    factory = new CMKeyValueStorageFactory(options);
+    log.info("Registering chronicle map key value storage factory");
     service.registerKeyValueStorage(factory);
   }
 
   @Override
   public CompletableFuture<Void> reloadConfiguration() {
-    LOG.warn("Configuration reloaded is not supported");
+    log.warn("Configuration reloaded is not supported");
     return CompletableFuture.completedFuture(null);
   }
 
   @Override
   public void stop() {
-    LOG.info("Stopping plugin {}.", PLUGIN_NAME);
+    log.info("Stopping plugin {}.", PLUGIN_NAME);
+    if (factory != null) {
+      try {
+        factory.close();
+      } catch (IOException e) {
+        log.error("Failed to stop plugin: {}", e.getMessage(), e);
+      }
+    }
   }
 
   @Override
